@@ -90,7 +90,8 @@ public class GeFullPricesPlugin extends Plugin
 			}
 
 			long price = slotPrice(offers, slot);
-			if (price <= 0)
+			String full = price > 0 ? fullPrice(price) : null;
+			if (full == null)
 			{
 				continue;
 			}
@@ -105,7 +106,7 @@ public class GeFullPricesPlugin extends Plugin
 				String text = child.getText();
 				if (text != null && ABBREVIATED.matcher(text).matches())
 				{
-					child.setText(fullPrice(price));
+					child.setText(full);
 				}
 			}
 		}
@@ -135,8 +136,21 @@ public class GeFullPricesPlugin extends Plugin
 		}
 	}
 
+	// The slot is about 20 characters wide: "10,909,909,909 coins" already clips, so
+	// 10b+ says "gp" instead, and 1t+ ("1,000,000,000,000 gp") keeps the game's text
+	private static final long GP_SUFFIX_FROM = 10_000_000_000L;
+	private static final long FULL_PRICE_BELOW = 1_000_000_000_000L;
+
+	/**
+	 * @return the slot's full price text, or null to leave the game's abbreviation
+	 */
 	static String fullPrice(long price)
 	{
-		return NumberFormat.getIntegerInstance(Locale.US).format(price) + " coins";
+		if (price >= FULL_PRICE_BELOW)
+		{
+			return null;
+		}
+		String digits = NumberFormat.getIntegerInstance(Locale.US).format(price);
+		return digits + (price >= GP_SUFFIX_FROM ? " gp" : " coins");
 	}
 }

@@ -2,6 +2,7 @@ package com.mreedon.gefullprices;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import org.junit.Test;
 
@@ -39,5 +40,14 @@ public class FormatTest
 	{
 		assertEquals("791,005,403 coins", GeFullPricesPlugin.fullPrice(791_005_403L));
 		assertEquals("3,000,000,000 coins", GeFullPricesPlugin.fullPrice(3_000_000_000L));
+	}
+
+	@Test
+	public void shortensTheSuffixWhereTheSlotRunsOutOfRoom()
+	{
+		assertEquals("9,999,999,999 coins", GeFullPricesPlugin.fullPrice(9_999_999_999L));
+		assertEquals("10,909,909,909 gp", GeFullPricesPlugin.fullPrice(10_909_909_909L));
+		assertEquals("999,999,999,999 gp", GeFullPricesPlugin.fullPrice(999_999_999_999L));
+		assertNull(GeFullPricesPlugin.fullPrice(1_000_000_000_000L));
 	}
 }
