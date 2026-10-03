@@ -49,6 +49,13 @@ public class GeFullPricesPlugin extends Plugin
 		VarPlayerID.GE_ITEMSINK_PRICE_LONG_6, VarPlayerID.GE_ITEMSINK_PRICE_LONG_7,
 	};
 
+	private static final int[] ITEMSINK_OBJ = {
+		VarPlayerID.GE_ITEMSINK_OBJ_0, VarPlayerID.GE_ITEMSINK_OBJ_1,
+		VarPlayerID.GE_ITEMSINK_OBJ_2, VarPlayerID.GE_ITEMSINK_OBJ_3,
+		VarPlayerID.GE_ITEMSINK_OBJ_4, VarPlayerID.GE_ITEMSINK_OBJ_5,
+		VarPlayerID.GE_ITEMSINK_OBJ_6, VarPlayerID.GE_ITEMSINK_OBJ_7,
+	};
+
 	@Inject
 	private Client client;
 
@@ -113,7 +120,19 @@ public class GeFullPricesPlugin extends Plugin
 		{
 			return offers[slot].getPrice();
 		}
-		return client.getVarpLongValue(ITEMSINK_PRICE[slot]);
+		if (client.getVarpValue(ITEMSINK_OBJ[slot]) <= 0)
+		{
+			return 0;
+		}
+		// The script reads these as long, but the client may type them as int varps
+		try
+		{
+			return client.getVarpLongValue(ITEMSINK_PRICE[slot]);
+		}
+		catch (IllegalArgumentException e)
+		{
+			return client.getVarpValue(ITEMSINK_PRICE[slot]);
+		}
 	}
 
 	static String fullPrice(long price)
