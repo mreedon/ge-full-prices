@@ -1,19 +1,28 @@
 package com.mreedon.gefullprices;
 
+import com.google.inject.Provides;
 import java.text.NumberFormat;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.GrandExchangeOfferChanged;
 import net.runelite.api.events.ScriptPostFired;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetType;
 import net.runelite.client.callback.ClientThread;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -22,13 +31,14 @@ import net.runelite.client.plugins.PluginDescriptor;
  * price per item abbreviated ("791m coins"). The slot is drawn by the game script
  * ge_offers_index_drawslot, which formats the price with a short-number proc. This
  * plugin waits for that script to finish and rewrites the price line with the
- * exact value from the offer ("791,005,403 coins").
+ * exact value from the offer ("791,005,403 coins"). Optionally it also adds a
+ * timer to each slot's Buy/Sell header, see {@link SlotTimer}.
  */
 @Slf4j
 @PluginDescriptor(
 	name = "GE Full Prices",
-	description = "Shows the exact price on Grand Exchange offer slots instead of the abbreviated 791m",
-	tags = {"grand exchange", "ge", "price", "coins", "exact", "abbreviated", "offer"}
+	description = "Shows the exact price on Grand Exchange offer slots instead of the abbreviated 791m, and optional offer timers",
+	tags = {"grand exchange", "ge", "price", "coins", "exact", "abbreviated", "offer", "timer", "slot"}
 )
 public class GeFullPricesPlugin extends Plugin
 {
@@ -62,10 +72,47 @@ public class GeFullPricesPlugin extends Plugin
 	@Inject
 	private ClientThread clientThread;
 
+	@Inject
+	private ConfigManager configManager;
+
+	@Inject
+	private GeFullPricesConfig config;
+
+	// Offers the client replays at login or hop changed at an unknown time. That
+	// lasts until the game state is LOGGED_IN plus a couple of ticks.
+	private boolean replaying;
+	private int loggedInTick = -1;
+	private static final int REPLAY_TICKS = 2;
+
+	@Provides
+	GeFullPricesConfig provideConfig(ConfigManager configManager)
+	{
+		return configManager.getConfig(GeFullPricesConfig.class);
+	}
+
 	@Override
 	protected void startUp()
 	{
-		clientThread.invokeLater(this::rewriteSlots);
+		replaying = false;
+		loggedInTick = -1;
+		clientThread.invokeLater(() ->
+		{
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				snapshotOffers();
+			}
+			else
+			{
+				replaying = true;
+			}
+			rewriteSlots();
+		});
+	}
+
+	@Override
+	protected void shutDown()
+	{
+		clientThread.invokeLater(this::clearTimers);
 	}
 
 	@Subscribe
@@ -78,13 +125,162 @@ public class GeFullPricesPlugin extends Plugin
 		}
 	}
 
+	@Subscribe
+	public void onGameStateChanged(GameStateChanged event)
+	{
+		switch (event.getGameState())
+		{
+			case LOGGING_IN:
+			case HOPPING:
+			case CONNECTION_LOST:
+				replaying = true;
+				loggedInTick = -1;
+				break;
+		}
+	}
+
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		if (replaying && client.getGameState() == GameState.LOGGED_IN)
+		{
+			if (loggedInTick < 0)
+			{
+				loggedInTick = client.getTickCount();
+			}
+			else if (client.getTickCount() - loggedInTick >= REPLAY_TICKS)
+			{
+				replaying = false;
+			}
+		}
+		if (config.offerTimers())
+		{
+			drawTimers();
+		}
+	}
+
+	@Subscribe
+	public void onConfigChanged(ConfigChanged event)
+	{
+		if (!GeFullPricesConfig.GROUP.equals(event.getGroup()) || !"offerTimers".equals(event.getKey()))
+		{
+			return;
+		}
+		clientThread.invokeLater(() ->
+		{
+			if (config.offerTimers())
+			{
+				drawTimers();
+			}
+			else
+			{
+				clearTimers();
+			}
+		});
+	}
+
+	@Subscribe
+	public void onGrandExchangeOfferChanged(GrandExchangeOfferChanged event)
+	{
+		GrandExchangeOffer offer = event.getOffer();
+		if (offer.getState() == GrandExchangeOfferState.EMPTY)
+		{
+			// The client clears every slot while logging in or hopping; only a
+			// logged-in empty is a real collect
+			if (client.getGameState() == GameState.LOGGED_IN)
+			{
+				saveTimer(event.getSlot(), null);
+			}
+			return;
+		}
+		boolean live = !replaying && client.getGameState() == GameState.LOGGED_IN;
+		trackOffer(event.getSlot(), offer, live);
+	}
+
+	// Offers already up when the plugin starts were not seen placed: keep a record
+	// that still matches, otherwise remember them with an unknown start
+	private void snapshotOffers()
+	{
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers == null)
+		{
+			return;
+		}
+		for (int slot = 0; slot < SLOTS && slot < offers.length; slot++)
+		{
+			GrandExchangeOffer offer = offers[slot];
+			if (offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
+			{
+				saveTimer(slot, null);
+			}
+			else
+			{
+				trackOffer(slot, offer, false);
+			}
+		}
+	}
+
+	private void trackOffer(int slot, GrandExchangeOffer offer, boolean live)
+	{
+		GrandExchangeOfferState state = offer.getState();
+		boolean complete = state != GrandExchangeOfferState.BUYING && state != GrandExchangeOfferState.SELLING;
+		SlotTimer prev = loadTimer(slot);
+		SlotTimer next = SlotTimer.update(prev, offer.getItemId(), isBuy(state), offer.getPrice(),
+			offer.getTotalQuantity(), offer.getQuantitySold(), complete, live, Instant.now().getEpochSecond());
+		if (!next.equals(prev))
+		{
+			log.debug("slot {} timer {} -> {}", slot, prev, next);
+			saveTimer(slot, next);
+		}
+	}
+
+	private SlotTimer loadTimer(int slot)
+	{
+		return SlotTimer.parse(configManager.getRSProfileConfiguration(GeFullPricesConfig.GROUP, timerKey(slot)));
+	}
+
+	private void saveTimer(int slot, SlotTimer timer)
+	{
+		if (timer == null)
+		{
+			configManager.unsetRSProfileConfiguration(GeFullPricesConfig.GROUP, timerKey(slot));
+		}
+		else
+		{
+			configManager.setRSProfileConfiguration(GeFullPricesConfig.GROUP, timerKey(slot), timer.serialize());
+		}
+	}
+
+	private static String timerKey(int slot)
+	{
+		return "timer." + slot;
+	}
+
+	private static boolean isBuy(GrandExchangeOfferState state)
+	{
+		return state == GrandExchangeOfferState.BUYING || state == GrandExchangeOfferState.BOUGHT
+			|| state == GrandExchangeOfferState.CANCELLED_BUY;
+	}
+
 	private void rewriteSlots()
+	{
+		if (config.exactPrices())
+		{
+			rewritePrices();
+		}
+		if (config.offerTimers())
+		{
+			drawTimers();
+		}
+	}
+
+	private void rewritePrices()
 	{
 		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
 		for (int slot = 0; slot < SLOTS; slot++)
 		{
-			Widget slotWidget = client.getWidget(InterfaceID.GeOffers.INDEX_0 + slot);
-			if (slotWidget == null || slotWidget.isHidden())
+			Widget slotWidget = visibleSlot(slot);
+			if (slotWidget == null)
 			{
 				continue;
 			}
@@ -96,12 +292,7 @@ public class GeFullPricesPlugin extends Plugin
 				continue;
 			}
 
-			Widget[] children = slotWidget.getDynamicChildren();
-			if (children == null)
-			{
-				continue;
-			}
-			for (Widget child : children)
+			for (Widget child : slotWidget.getDynamicChildren())
 			{
 				String text = child.getText();
 				if (text != null && ABBREVIATED.matcher(text).matches())
@@ -110,6 +301,79 @@ public class GeFullPricesPlugin extends Plugin
 				}
 			}
 		}
+	}
+
+	// Writes "Buy 12:34" into the slot header for every live offer with a known start
+	private void drawTimers()
+	{
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		if (offers == null)
+		{
+			return;
+		}
+		long now = Instant.now().getEpochSecond();
+		for (int slot = 0; slot < SLOTS && slot < offers.length; slot++)
+		{
+			Widget header = header(slot);
+			GrandExchangeOffer offer = offers[slot];
+			if (header == null || offer == null || offer.getState() == GrandExchangeOfferState.EMPTY)
+			{
+				continue;
+			}
+			String label = isBuy(offer.getState()) ? "Buy" : "Sell";
+			SlotTimer timer = loadTimer(slot);
+			String elapsed = timer != null && timer.itemId == offer.getItemId() ? timer.elapsed(now) : null;
+			String text = elapsed == null ? label
+				: String.format("%s <col=%06x>%s</col>", label, timer.colour(now), elapsed);
+			if (!text.equals(header.getText()))
+			{
+				header.setText(text);
+			}
+		}
+	}
+
+	// Puts the plain Buy/Sell header back when timers are turned off
+	private void clearTimers()
+	{
+		GrandExchangeOffer[] offers = client.getGrandExchangeOffers();
+		for (int slot = 0; offers != null && slot < SLOTS && slot < offers.length; slot++)
+		{
+			Widget header = header(slot);
+			GrandExchangeOffer offer = offers[slot];
+			if (header != null && offer != null && offer.getState() != GrandExchangeOfferState.EMPTY)
+			{
+				header.setText(isBuy(offer.getState()) ? "Buy" : "Sell");
+			}
+		}
+	}
+
+	private Widget visibleSlot(int slot)
+	{
+		Widget slotWidget = client.getWidget(InterfaceID.GeOffers.INDEX_0 + slot);
+		if (slotWidget == null || slotWidget.isHidden() || slotWidget.getDynamicChildren() == null)
+		{
+			return null;
+		}
+		return slotWidget;
+	}
+
+	// ge_offers_index_initslot creates the header ("Buy", "Sell", "Empty") as the
+	// slot's first text child, ahead of the item name and price
+	private Widget header(int slot)
+	{
+		Widget slotWidget = visibleSlot(slot);
+		if (slotWidget == null)
+		{
+			return null;
+		}
+		for (Widget child : slotWidget.getDynamicChildren())
+		{
+			if (child != null && child.getType() == WidgetType.TEXT)
+			{
+				return child;
+			}
+		}
+		return null;
 	}
 
 	// Mirrors the script: a live offer uses its own price; an empty slot holding an
