@@ -46,7 +46,8 @@ class SlotTimer
 		long at = live ? now : UNKNOWN;
 		if (prev != null && prev.itemId == itemId && prev.buy == buy && prev.price == price && prev.total == total)
 		{
-			long lastFill = sold > prev.sold && live ? now : prev.lastFill;
+			// A fill seen only in the login replay happened at an unknown time
+			long lastFill = sold > prev.sold ? at : prev.lastFill;
 			long end = complete && prev.end == RUNNING ? at : prev.end;
 			return new SlotTimer(itemId, buy, price, total, Math.max(sold, prev.sold), prev.start, lastFill, end);
 		}
@@ -55,15 +56,22 @@ class SlotTimer
 	}
 
 	/**
+	 * @param sinceLastFill count a running offer from its last fill instead of from
+	 *                      when it was placed; a complete one shows its total time
 	 * @return the elapsed time, or null when the start or the finish is unknown
 	 */
-	String elapsed(long now)
+	String elapsed(long now, boolean sinceLastFill)
 	{
 		if (start == UNKNOWN || end == UNKNOWN)
 		{
 			return null;
 		}
-		return duration((end == RUNNING ? now : end) - start);
+		if (end != RUNNING)
+		{
+			return duration(end - start);
+		}
+		long from = sinceLastFill ? lastFill : start;
+		return from == UNKNOWN ? null : duration(now - from);
 	}
 
 	int colour(long now)

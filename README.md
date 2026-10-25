@@ -8,6 +8,8 @@ It only touches the price line on the eight offer slots. Prices under 100,000 we
 
 Turn on **Offer timers** in the plugin's settings to show how long each offer has been up, next to Buy or Sell at the top of the slot: `Buy 12:34`. The time is white while the offer is filling, grey after 30 minutes without a fill, and green, stopped, once the offer completes or is cancelled. Changing an offer's price restarts its timer.
 
+Set **Timer counts from** to **Last fill** to see how long it has been since a partly filled offer last bought or sold anything, instead of how long it has been up. A slow offer that just started filling then reads `0:00` rather than two hours. Until the first fill it counts from when the offer was placed, and a completed offer still shows its total time. If the last fill happened while you were logged out, that slot shows no timer until its next fill.
+
 The game never says when an offer was placed, so the plugin has to see it happen. Offers placed on mobile, on another computer, or while the plugin was off show no timer until that slot gets a new offer. The same goes for an offer that completes while you are logged out. Start times are saved with your RuneLite profile, so timers survive logging out and restarting.
 
 The slot timer idea comes from [Flipping Utilities](https://github.com/Flipping-Utilities/rl-plugin), which has one alongside many other flipping tools. This plugin is for players who only want the timer.
@@ -18,6 +20,7 @@ The slot timer idea comes from [Flipping Utilities](https://github.com/Flipping-
 |---|---|---|
 | Exact prices | On | The exact price on each slot. Turning it off takes effect the next time the Grand Exchange redraws the slot. |
 | Offer timers | Off | The timer described above. |
+| Timer counts from | Offer placed | Offer placed, or Last fill to count from the most recent partial fill. |
 
 ## How it works
 

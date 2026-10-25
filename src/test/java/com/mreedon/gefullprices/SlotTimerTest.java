@@ -17,8 +17,8 @@ public class SlotTimerTest
 	public void countsFromWhenTheOfferWasPlaced()
 	{
 		SlotTimer t = place(1000);
-		assertEquals("0:00", t.elapsed(1000));
-		assertEquals("12:34", t.elapsed(1000 + 754));
+		assertEquals("0:00", t.elapsed(1000, false));
+		assertEquals("12:34", t.elapsed(1000 + 754, false));
 		assertEquals(SlotTimer.WHITE, t.colour(1000 + 754));
 	}
 
@@ -39,7 +39,7 @@ public class SlotTimerTest
 		assertEquals(SlotTimer.GREY, t.colour(SlotTimer.STALE_AFTER));
 		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 3, false, true, 1700);
 		assertEquals(SlotTimer.WHITE, t.colour(1700 + SlotTimer.STALE_AFTER - 1));
-		assertEquals("28:20", t.elapsed(1700));
+		assertEquals("28:20", t.elapsed(1700, false));
 	}
 
 	@Test
@@ -47,7 +47,7 @@ public class SlotTimerTest
 	{
 		SlotTimer t = place(0);
 		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 10, true, true, 90);
-		assertEquals("1:30", t.elapsed(5000));
+		assertEquals("1:30", t.elapsed(5000, false));
 		assertEquals(SlotTimer.GREEN, t.colour(5000));
 		// the duplicate completion event the client sends must not move the end
 		assertEquals(t, SlotTimer.update(t, WHIP, true, 1_500_000, 10, 10, true, true, 200));
@@ -57,10 +57,10 @@ public class SlotTimerTest
 	public void offersFirstSeenAtLoginHaveNoTimer()
 	{
 		SlotTimer t = SlotTimer.update(null, WHIP, true, 1_500_000, 10, 4, false, false, 1000);
-		assertNull(t.elapsed(2000));
+		assertNull(t.elapsed(2000, false));
 		// and a later live fill does not invent a start
 		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 6, false, true, 3000);
-		assertNull(t.elapsed(4000));
+		assertNull(t.elapsed(4000, false));
 	}
 
 	@Test
@@ -68,7 +68,7 @@ public class SlotTimerTest
 	{
 		SlotTimer t = place(1000);
 		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 0, false, false, 9000);
-		assertEquals("2:13:20", t.elapsed(9000));
+		assertEquals("2:13:20", t.elapsed(9000, false));
 	}
 
 	@Test
@@ -76,7 +76,7 @@ public class SlotTimerTest
 	{
 		SlotTimer t = place(1000);
 		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 10, true, false, 9000);
-		assertNull(t.elapsed(9000));
+		assertNull(t.elapsed(9000, false));
 	}
 
 	@Test
@@ -84,7 +84,41 @@ public class SlotTimerTest
 	{
 		SlotTimer t = place(1000);
 		t = SlotTimer.update(t, WHIP, true, 1_600_000, 10, 2, false, true, 5000);
-		assertEquals("0:10", t.elapsed(5010));
+		assertEquals("0:10", t.elapsed(5010, false));
+	}
+
+	@Test
+	public void sinceLastFillCountsFromPlacementThenFromEachFill()
+	{
+		// Snore's example: placed at 0, one item buys at 180
+		SlotTimer t = place(0);
+		assertEquals("2:00", t.elapsed(120, true));
+		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 1, false, true, 180);
+		assertEquals("0:00", t.elapsed(180, true));
+		assertEquals("10:00", t.elapsed(780, true));
+		assertEquals("13:00", t.elapsed(780, false));
+	}
+
+	@Test
+	public void sinceLastFillShowsTotalTimeOnceComplete()
+	{
+		SlotTimer t = place(0);
+		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 4, false, true, 60);
+		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 10, true, true, 90);
+		assertEquals("1:30", t.elapsed(5000, true));
+	}
+
+	@Test
+	public void aFillSeenOnlyAtLoginHidesTheLastFillTimer()
+	{
+		SlotTimer t = place(1000);
+		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 3, false, false, 9000);
+		assertNull(t.elapsed(9000, true));
+		// the placed timer still knows its start
+		assertEquals("2:13:20", t.elapsed(9000, false));
+		// and the next live fill brings it back
+		t = SlotTimer.update(t, WHIP, true, 1_500_000, 10, 5, false, true, 9500);
+		assertEquals("0:30", t.elapsed(9530, true));
 	}
 
 	@Test

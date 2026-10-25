@@ -32,4 +32,37 @@ public interface GeFullPricesConfig extends Config
 	{
 		return false;
 	}
+
+	enum TimerStart
+	{
+		OFFER_PLACED("Offer placed"),
+		LAST_FILL("Last fill");
+
+		private final String name;
+
+		TimerStart(String name)
+		{
+			this.name = name;
+		}
+
+		@Override
+		public String toString()
+		{
+			return name;
+		}
+	}
+
+	@ConfigItem(
+		keyName = "timerStart",
+		name = "Timer counts from",
+		description = "Offer placed: how long the offer has been up. Last fill: how long since the offer last bought"
+			+ " or sold any items, counting from when it was placed until the first fill. A fill that happened while"
+			+ " you were logged out hides the timer until the next one. Completed offers show their total time either"
+			+ " way",
+		position = 2
+	)
+	default TimerStart timerStart()
+	{
+		return TimerStart.OFFER_PLACED;
+	}
 }

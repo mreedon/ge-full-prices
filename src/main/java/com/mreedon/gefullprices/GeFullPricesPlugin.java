@@ -312,6 +312,7 @@ public class GeFullPricesPlugin extends Plugin
 			return;
 		}
 		long now = Instant.now().getEpochSecond();
+		boolean sinceLastFill = config.timerStart() == GeFullPricesConfig.TimerStart.LAST_FILL;
 		for (int slot = 0; slot < SLOTS && slot < offers.length; slot++)
 		{
 			Widget header = header(slot);
@@ -322,7 +323,7 @@ public class GeFullPricesPlugin extends Plugin
 			}
 			String label = isBuy(offer.getState()) ? "Buy" : "Sell";
 			SlotTimer timer = loadTimer(slot);
-			String elapsed = timer != null && timer.itemId == offer.getItemId() ? timer.elapsed(now) : null;
+			String elapsed = timer != null && timer.itemId == offer.getItemId() ? timer.elapsed(now, sinceLastFill) : null;
 			String text = elapsed == null ? label
 				: String.format("%s <col=%06x>%s</col>", label, timer.colour(now), elapsed);
 			if (!text.equals(header.getText()))
