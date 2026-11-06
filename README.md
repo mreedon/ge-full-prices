@@ -21,7 +21,8 @@ The slot timer idea comes from [Flipping Utilities](https://github.com/Flipping-
 | Exact prices | On | The exact price on each slot. Turning it off takes effect the next time the Grand Exchange redraws the slot. |
 | Offer timers | Off | The timer described above. |
 | Timer counts from | Offer placed | Offer placed, or Last fill to count from the most recent partial fill. |
+| Hide inventory glow | Off | Stops the inventory from pulsing yellow while the Grand Exchange is open. |
 
 ## How it works
 
-The game draws each slot with the `ge_offers_index_drawslot` script (797) and, when the interface opens, with `ge_offers_init` (803). After either one runs, the plugin finds the slot's abbreviated price text and rewrites it with the offer's exact price per item. The timer is written into the slot's header text after the same scripts and on each game tick while the Grand Exchange is open. The plugin makes no network requests and reads or writes no files.
+The game draws each slot with the `ge_offers_index_drawslot` script (797) and, when the interface opens, with `ge_offers_init` (803). After either one runs, the plugin finds the slot's abbreviated price text and rewrites it with the offer's exact price per item. The timer is written into the slot's header text after the same scripts and on each game tick while the Grand Exchange is open. With Hide inventory glow on, the plugin hides the inventory side panel's glow layer just before each frame is drawn, and shows it again when the setting is turned off. The plugin makes no network requests and reads or writes no files.

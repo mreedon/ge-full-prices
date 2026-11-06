@@ -11,6 +11,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.GrandExchangeOffer;
 import net.runelite.api.GrandExchangeOfferState;
+import net.runelite.api.events.BeforeRender;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GrandExchangeOfferChanged;
@@ -37,8 +38,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 @Slf4j
 @PluginDescriptor(
 	name = "GE Full Prices",
-	description = "Shows the exact price on Grand Exchange offer slots instead of the abbreviated 791m, and optional offer timers",
-	tags = {"grand exchange", "ge", "price", "coins", "exact", "abbreviated", "offer", "timer", "slot"}
+	description = "Shows the exact price on Grand Exchange offer slots instead of the abbreviated 791m, optional offer timers, and an option to stop the inventory glow",
+	tags = {"grand exchange", "ge", "price", "coins", "exact", "abbreviated", "offer", "timer", "slot", "glow", "inventory"}
 )
 public class GeFullPricesPlugin extends Plugin
 {
@@ -84,6 +85,9 @@ public class GeFullPricesPlugin extends Plugin
 	private int loggedInTick = -1;
 	private static final int REPLAY_TICKS = 2;
 
+	// The GE side panel's glow layer, while this plugin is keeping it hidden
+	private Widget hiddenGlow;
+
 	@Provides
 	GeFullPricesConfig provideConfig(ConfigManager configManager)
 	{
@@ -112,7 +116,11 @@ public class GeFullPricesPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		clientThread.invokeLater(this::clearTimers);
+		clientThread.invokeLater(() ->
+		{
+			clearTimers();
+			restoreGlow();
+		});
 	}
 
 	@Subscribe
@@ -159,10 +167,49 @@ public class GeFullPricesPlugin extends Plugin
 		}
 	}
 
+	// The GE's inventory side panel pulses yellow through its GLOW layer. Hiding it
+	// just before each frame wins over whatever the game script set that cycle.
+	@Subscribe
+	public void onBeforeRender(BeforeRender event)
+	{
+		if (!config.hideInventoryGlow())
+		{
+			return;
+		}
+		Widget glow = client.getWidget(InterfaceID.GeOffersSide.GLOW);
+		if (glow != null && !glow.isSelfHidden())
+		{
+			glow.setHidden(true);
+			hiddenGlow = glow;
+		}
+	}
+
+	// Only shows the glow again if this plugin is what hid it
+	private void restoreGlow()
+	{
+		if (hiddenGlow != null && hiddenGlow == client.getWidget(InterfaceID.GeOffersSide.GLOW))
+		{
+			hiddenGlow.setHidden(false);
+		}
+		hiddenGlow = null;
+	}
+
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (!GeFullPricesConfig.GROUP.equals(event.getGroup()) || !"offerTimers".equals(event.getKey()))
+		if (!GeFullPricesConfig.GROUP.equals(event.getGroup()))
+		{
+			return;
+		}
+		if ("hideInventoryGlow".equals(event.getKey()))
+		{
+			if (!config.hideInventoryGlow())
+			{
+				clientThread.invokeLater(this::restoreGlow);
+			}
+			return;
+		}
+		if (!"offerTimers".equals(event.getKey()))
 		{
 			return;
 		}

@@ -65,4 +65,15 @@ public interface GeFullPricesConfig extends Config
 	{
 		return TimerStart.OFFER_PLACED;
 	}
+
+	@ConfigItem(
+		keyName = "hideInventoryGlow",
+		name = "Hide inventory glow",
+		description = "Stop the inventory from pulsing yellow while the Grand Exchange is open",
+		position = 3
+	)
+	default boolean hideInventoryGlow()
+	{
+		return false;
+	}
 }
